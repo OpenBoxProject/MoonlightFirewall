@@ -1,48 +1,31 @@
 package org.moonlightcontroller.samples;
 
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.logging.Logger;
-
+import com.google.common.collect.ImmutableList;
 import org.moonlightcontroller.bal.BoxApplication;
-import org.moonlightcontroller.blocks.Alert;
-import org.moonlightcontroller.blocks.Discard;
-import org.moonlightcontroller.blocks.FromDevice;
-import org.moonlightcontroller.blocks.FromDump;
-import org.moonlightcontroller.blocks.HeaderClassifier;
+import org.moonlightcontroller.blocks.*;
 import org.moonlightcontroller.blocks.HeaderClassifier.HeaderClassifierRule;
-import org.moonlightcontroller.blocks.Log;
-import org.moonlightcontroller.blocks.ToDevice;
-import org.moonlightcontroller.events.IAlertListener;
-// import org.moonlightcontroller.blocks.ToDevice;
 import org.moonlightcontroller.events.IHandleClient;
 import org.moonlightcontroller.events.IInstanceUpListener;
-import org.moonlightcontroller.events.InstanceAlertArgs;
 import org.moonlightcontroller.events.InstanceUpArgs;
 import org.moonlightcontroller.managers.models.messages.AlertMessage;
 import org.moonlightcontroller.processing.Connector;
 import org.moonlightcontroller.processing.IConnector;
 import org.moonlightcontroller.processing.IProcessingBlock;
 import org.moonlightcontroller.processing.ProcessingGraph;
-import org.moonlightcontroller.samples.actions.Action;
-import org.moonlightcontroller.samples.actions.ActionAlert;
-import org.moonlightcontroller.samples.actions.ActionDrop;
-import org.moonlightcontroller.samples.actions.ActionLog;
-import org.moonlightcontroller.samples.actions.ActionOutput;
+import org.moonlightcontroller.samples.actions.*;
+import org.moonlightcontroller.topology.IApplicationTopology;
+import org.moonlightcontroller.topology.TopologyManager;
 import org.openboxprotocol.protocol.IStatement;
 import org.openboxprotocol.protocol.Priority;
 import org.openboxprotocol.protocol.Statement;
-import org.openboxprotocol.protocol.topology.IApplicationTopology;
-import org.openboxprotocol.protocol.topology.TopologyManager;
 
-import com.google.common.collect.ImmutableList;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.*;
+import java.util.logging.Logger;
+
+// import org.moonlightcontroller.blocks.ToDevice;
 
 public class Firewall extends BoxApplication{
 
@@ -91,15 +74,11 @@ public class Firewall extends BoxApplication{
 		
 		this.setStatements(createStatements());
 		this.setInstanceUpListener(new InstanceUpHandler());
-		this.setAlertListener(new IAlertListener() {
-			
-			@Override
-			public void Handle(InstanceAlertArgs args) {
-				for (AlertMessage a : args.getAlert().getMessages()) {
-					LOG.info(a.toString());
-				}
-			}
-		});
+		this.setAlertListener(args -> {
+            for (AlertMessage a : args.getAlert().getMessages()) {
+                LOG.info(a.toString());
+            }
+        });
 	}
 	
 	@Override
@@ -122,7 +101,7 @@ public class Firewall extends BoxApplication{
 			return ImmutableList.of();
 		}
 
-		HeaderClassifier classify = new HeaderClassifier("HeaderClassifier_Snort", headerRules, Priority.HIGH);
+		HeaderClassifier classify = new HeaderClassifier("HeaderClassifier_Snort", headerRules, Priority.HIGH, true);
 		blocks.add(classify);
 		
 		Discard discard = new Discard("Discard_Firewall");
