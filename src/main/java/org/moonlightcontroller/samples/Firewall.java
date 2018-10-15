@@ -19,13 +19,9 @@ import org.openboxprotocol.protocol.IStatement;
 import org.openboxprotocol.protocol.Priority;
 import org.openboxprotocol.protocol.Statement;
 
-import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
 import java.util.*;
 import java.util.logging.Logger;
-
-// import org.moonlightcontroller.blocks.ToDevice;
 
 public class Firewall extends BoxApplication{
 
@@ -61,11 +57,10 @@ public class Firewall extends BoxApplication{
 		super("Firewall");
 		
 		props = new Properties(DEFAULT_PROPS);
-		File f = new File(PROPERTIES_PATH);
 		try {
-			props.load(new FileReader(f));
+			props.load(this.getClass().getClassLoader().getResourceAsStream(PROPERTIES_PATH));
 		} catch (IOException e) {
-			LOG.severe("Cannot load properties file from path: " + f.getAbsolutePath());
+			LOG.severe("Cannot load properties file from path: " + PROPERTIES_PATH);
 			LOG.severe("Using default properties.");
 		}
 		LOG.info(String.format("Firewall is running on Segment %s", props.getProperty(PROP_SEGMENT)));

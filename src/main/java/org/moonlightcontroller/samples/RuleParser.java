@@ -1,11 +1,9 @@
 package org.moonlightcontroller.samples;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.Reader;
+import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -70,11 +68,11 @@ public class RuleParser {
 		this.path = path;
 	}
 	
-	public List<Rule> read() throws IOException, org.json.simple.parser.ParseException, JSONParseException {
+	public List<Rule> read() throws IOException, ParseException, JSONParseException {
 		BufferedReader reader = null;
 		
 		try {
-			reader = new BufferedReader(new FileReader(path));
+			reader = new BufferedReader(new InputStreamReader(this.getClass().getClassLoader().getResourceAsStream(path), StandardCharsets.UTF_8));
 			return readRulesFromFile(reader);
 		} catch (ParseException e) {
 			e.printStackTrace();
