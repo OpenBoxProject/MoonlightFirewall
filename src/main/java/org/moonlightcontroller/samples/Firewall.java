@@ -83,8 +83,9 @@ public class Firewall extends BoxApplication{
 	
 	private List<IStatement> createStatements() {
 		// Compile rules file to a graph
-		
-		List<IProcessingBlock> blocks = new ArrayList<>();
+
+        Map<String, IProcessingBlock> blocksMap = new HashMap<>();
+        List<IProcessingBlock> blocks = new ArrayList<>();
 		List<IConnector> connectors = new ArrayList<>();
 		List<HeaderClassifierRule> headerRules = new ArrayList<>();
 		List<Rule> rules;
@@ -98,8 +99,10 @@ public class Firewall extends BoxApplication{
 
 		HeaderClassifier classify = new HeaderClassifier("HeaderClassifier_Snort", headerRules, Priority.HIGH, true);
 		blocks.add(classify);
-		
-		Discard discard = new Discard("Discard_Firewall");
+
+        blocksMap.put(classify.getId(), classify);
+
+        Discard discard = new Discard("Discard_Firewall");
 		Map<String, ToDevice> toDeviceBlocks = new HashMap<>();
 		
 		int i = 0;
@@ -114,10 +117,8 @@ public class Firewall extends BoxApplication{
 			int lastOutPort = i;
 			int j = 0;
 			boolean stop = false;
-			boolean exists;
 			for (Action action : r.getActions()) {
 				IProcessingBlock block;
-				exists = false;
 				String suffix = String.format("_Firewall_Rule_%d_UID_%d", i, j);
 				if (action instanceof ActionAlert) {
 					block = new Alert("Alert" + suffix, ((ActionAlert)action).getMessage());
@@ -125,7 +126,6 @@ public class Firewall extends BoxApplication{
 					ActionOutput act = (ActionOutput)action;
 					if (toDeviceBlocks.containsKey(act.getInterface())) {
 						block = toDeviceBlocks.get(act.getInterface());
-						exists = true;
 					} else {
 						ToDevice newBlock = new ToDevice("ToDevice" + suffix, ((ActionOutput)action).getInterface());
 						block = newBlock;
@@ -140,8 +140,10 @@ public class Firewall extends BoxApplication{
 					LOG.severe("Unknown action: " + action.getType());
 					continue;
 				}
-				if (!exists)
-					blocks.add(block);
+
+				if (!blocksMap.containsKey(block.getId()))
+                    blocksMap.put(block.getId(), block);
+
 				connectors.add(new Connector.Builder().setSourceBlock(last).setSourceOutputPort(lastOutPort).setDestBlock(block).build());
 				last = block;
 				lastOutPort = 0;
@@ -152,13 +154,15 @@ public class Firewall extends BoxApplication{
 			
 			i++;
 		}
-		
-		FromDevice fromDevice = new FromDevice("FromDevice_Snort", props.getProperty(PROP_IN_IFC), true, true);
+
+        blocks = new ArrayList<>(blocksMap.values());
+
+        FromDevice fromDevice = new FromDevice("FromDevice_Snort", props.getProperty(PROP_IN_IFC), true, true);
 		FromDump fromDump = new FromDump("FromDump_Snort", props.getProperty(PROP_IN_DUMP), false, true);
 
 		IProcessingBlock from = (Boolean.parseBoolean(props.getProperty(PROP_IN_USE_IFC))) ?
 				fromDevice : fromDump;
-		
+
 		blocks.add(from);
 		connectors.add(
 			new Connector.Builder().setSourceBlock(from).setSourceOutputPort(0).setDestBlock(classify).build()
