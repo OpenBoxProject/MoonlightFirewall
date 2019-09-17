@@ -1,48 +1,27 @@
 package org.moonlightcontroller.samples;
 
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.logging.Logger;
-
+import com.google.common.collect.ImmutableList;
 import org.moonlightcontroller.bal.BoxApplication;
-import org.moonlightcontroller.blocks.Alert;
-import org.moonlightcontroller.blocks.Discard;
-import org.moonlightcontroller.blocks.FromDevice;
-import org.moonlightcontroller.blocks.FromDump;
-import org.moonlightcontroller.blocks.HeaderClassifier;
+import org.moonlightcontroller.blocks.*;
 import org.moonlightcontroller.blocks.HeaderClassifier.HeaderClassifierRule;
-import org.moonlightcontroller.blocks.Log;
-import org.moonlightcontroller.blocks.ToDevice;
-import org.moonlightcontroller.events.IAlertListener;
-// import org.moonlightcontroller.blocks.ToDevice;
 import org.moonlightcontroller.events.IHandleClient;
 import org.moonlightcontroller.events.IInstanceUpListener;
-import org.moonlightcontroller.events.InstanceAlertArgs;
 import org.moonlightcontroller.events.InstanceUpArgs;
 import org.moonlightcontroller.managers.models.messages.AlertMessage;
 import org.moonlightcontroller.processing.Connector;
 import org.moonlightcontroller.processing.IConnector;
 import org.moonlightcontroller.processing.IProcessingBlock;
 import org.moonlightcontroller.processing.ProcessingGraph;
-import org.moonlightcontroller.samples.actions.Action;
-import org.moonlightcontroller.samples.actions.ActionAlert;
-import org.moonlightcontroller.samples.actions.ActionDrop;
-import org.moonlightcontroller.samples.actions.ActionLog;
-import org.moonlightcontroller.samples.actions.ActionOutput;
+import org.moonlightcontroller.samples.actions.*;
+import org.moonlightcontroller.topology.IApplicationTopology;
+import org.moonlightcontroller.topology.TopologyManager;
 import org.openboxprotocol.protocol.IStatement;
 import org.openboxprotocol.protocol.Priority;
 import org.openboxprotocol.protocol.Statement;
-import org.openboxprotocol.protocol.topology.IApplicationTopology;
-import org.openboxprotocol.protocol.topology.TopologyManager;
 
-import com.google.common.collect.ImmutableList;
+import java.io.IOException;
+import java.util.*;
+import java.util.logging.Logger;
 
 public class Firewall extends BoxApplication{
 
@@ -78,11 +57,10 @@ public class Firewall extends BoxApplication{
 		super("Firewall");
 		
 		props = new Properties(DEFAULT_PROPS);
-		File f = new File(PROPERTIES_PATH);
 		try {
-			props.load(new FileReader(f));
+			props.load(this.getClass().getClassLoader().getResourceAsStream(PROPERTIES_PATH));
 		} catch (IOException e) {
-			LOG.severe("Cannot load properties file from path: " + f.getAbsolutePath());
+			LOG.severe("Cannot load properties file from path: " + PROPERTIES_PATH);
 			LOG.severe("Using default properties.");
 		}
 		LOG.info(String.format("Firewall is running on Segment %s", props.getProperty(PROP_SEGMENT)));
@@ -91,15 +69,11 @@ public class Firewall extends BoxApplication{
 		
 		this.setStatements(createStatements());
 		this.setInstanceUpListener(new InstanceUpHandler());
-		this.setAlertListener(new IAlertListener() {
-			
-			@Override
-			public void Handle(InstanceAlertArgs args) {
-				for (AlertMessage a : args.getAlert().getMessages()) {
-					LOG.info(a.toString());
-				}
-			}
-		});
+		this.setAlertListener(args -> {
+            for (AlertMessage a : args.getAlert().getMessages()) {
+                LOG.info(a.toString());
+            }
+        });
 	}
 	
 	@Override
@@ -109,8 +83,9 @@ public class Firewall extends BoxApplication{
 	
 	private List<IStatement> createStatements() {
 		// Compile rules file to a graph
-		
-		List<IProcessingBlock> blocks = new ArrayList<>();
+
+        Map<String, IProcessingBlock> blocksMap = new HashMap<>();
+        List<IProcessingBlock> blocks = new ArrayList<>();
 		List<IConnector> connectors = new ArrayList<>();
 		List<HeaderClassifierRule> headerRules = new ArrayList<>();
 		List<Rule> rules;
@@ -122,10 +97,12 @@ public class Firewall extends BoxApplication{
 			return ImmutableList.of();
 		}
 
-		HeaderClassifier classify = new HeaderClassifier("HeaderClassifier_Snort", headerRules, Priority.HIGH);
+		HeaderClassifier classify = new HeaderClassifier("HeaderClassifier_Snort", headerRules, Priority.HIGH, true);
 		blocks.add(classify);
-		
-		Discard discard = new Discard("Discard_Firewall");
+
+        blocksMap.put(classify.getId(), classify);
+
+        Discard discard = new Discard("Discard_Firewall");
 		Map<String, ToDevice> toDeviceBlocks = new HashMap<>();
 		
 		int i = 0;
@@ -140,10 +117,8 @@ public class Firewall extends BoxApplication{
 			int lastOutPort = i;
 			int j = 0;
 			boolean stop = false;
-			boolean exists;
 			for (Action action : r.getActions()) {
 				IProcessingBlock block;
-				exists = false;
 				String suffix = String.format("_Firewall_Rule_%d_UID_%d", i, j);
 				if (action instanceof ActionAlert) {
 					block = new Alert("Alert" + suffix, ((ActionAlert)action).getMessage());
@@ -151,7 +126,6 @@ public class Firewall extends BoxApplication{
 					ActionOutput act = (ActionOutput)action;
 					if (toDeviceBlocks.containsKey(act.getInterface())) {
 						block = toDeviceBlocks.get(act.getInterface());
-						exists = true;
 					} else {
 						ToDevice newBlock = new ToDevice("ToDevice" + suffix, ((ActionOutput)action).getInterface());
 						block = newBlock;
@@ -166,8 +140,10 @@ public class Firewall extends BoxApplication{
 					LOG.severe("Unknown action: " + action.getType());
 					continue;
 				}
-				if (!exists)
-					blocks.add(block);
+
+				if (!blocksMap.containsKey(block.getId()))
+                    blocksMap.put(block.getId(), block);
+
 				connectors.add(new Connector.Builder().setSourceBlock(last).setSourceOutputPort(lastOutPort).setDestBlock(block).build());
 				last = block;
 				lastOutPort = 0;
@@ -178,13 +154,15 @@ public class Firewall extends BoxApplication{
 			
 			i++;
 		}
-		
-		FromDevice fromDevice = new FromDevice("FromDevice_Snort", props.getProperty(PROP_IN_IFC), true, true);
+
+        blocks = new ArrayList<>(blocksMap.values());
+
+        FromDevice fromDevice = new FromDevice("FromDevice_Snort", props.getProperty(PROP_IN_IFC), true, true);
 		FromDump fromDump = new FromDump("FromDump_Snort", props.getProperty(PROP_IN_DUMP), false, true);
 
 		IProcessingBlock from = (Boolean.parseBoolean(props.getProperty(PROP_IN_USE_IFC))) ?
 				fromDevice : fromDump;
-		
+
 		blocks.add(from);
 		connectors.add(
 			new Connector.Builder().setSourceBlock(from).setSourceOutputPort(0).setDestBlock(classify).build()

@@ -1,0 +1,8 @@
+#!/bin/bash
+mvn package
+MOONLIGHT_PATH=../moonlight
+JAR_NAME=target/MoonlightFirewall-1.0.jar
+if [ -f "$JAR_NAME" ]; then
+  echo "JAR has been successfully created: $JAR_NAME"
+  echo "To use it, copy this file to $MOONLIGHT_PATH/target/apps and run Moonlight."
+fi
